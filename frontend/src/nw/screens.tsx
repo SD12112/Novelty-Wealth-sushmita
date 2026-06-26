@@ -744,6 +744,8 @@ export function BookScreen({ back, theme }: { back: () => void; theme: Theme }) 
 
 // ----- NOVA CHAT -----
 
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+
 export function NovaScreen({ p, theme }: { p: Profile; theme: Theme }) {
   const meera = p.key === "meera";
   const initial = meera
@@ -752,7 +754,15 @@ export function NovaScreen({ p, theme }: { p: Profile; theme: Theme }) {
   const [msgs, setMsgs] = useState<{ from: "ai" | "me"; t: string }[]>([{ from: "ai", t: initial }]);
   const [typing, setTyping] = useState(false);
   const [input, setInput] = useState("");
+  const sessionRef = useRef<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
+
+  // Reset chat when active profile changes.
+  useEffect(() => {
+    setMsgs([{ from: "ai", t: initial }]);
+    sessionRef.current = null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [p.key]);
 
   useEffect(() => {
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
@@ -762,19 +772,53 @@ export function NovaScreen({ p, theme }: { p: Profile; theme: Theme }) {
     ? ["Show the positions", "Over-diversified?", "Book the highs?"]
     : ["What would 80/20 do?", "Is ELSS enough?", "On track for 2040?"];
 
-  const reply = meera
-    ? "Two NIFTY weeklies, ~₹2.7L notional — that's what pushed you past 10%. Close the larger one and you're back inside for a small loss. One-tap ticket?"
-    : "80/20 adds ~₹14L by 2040 vs 70/30, with drawdowns you've seen before. I can phase it over 3 months. Set it up?";
-
-  const send = (t: string) => {
-    if (!t.trim()) return;
-    setMsgs((m) => [...m, { from: "me", t }]);
+  const send = async (t: string) => {
+    if (!t.trim() || typing) return;
+    const next = [...msgs, { from: "me" as const, t }];
+    setMsgs(next);
     setInput("");
     setTyping(true);
-    setTimeout(() => {
+
+    // Build history for backend (exclude the initial AI greeting; include the new user turn last).
+    const history = msgs
+      .slice(1)
+      .map((m) => ({ role: m.from === "me" ? ("user" as const) : ("assistant" as const), text: m.t }));
+
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/nova/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: sessionRef.current,
+          profile: {
+            key: p.key,
+            name: p.name,
+            value: p.value,
+            day: p.day,
+            pct: p.pct,
+            mix: p.mix.map((m) => ({ label: m.label, pct: m.pct })),
+            tiles: p.tiles.map((tile) => ({ title: tile.title, sub: tile.sub })),
+            pulse: p.pulse,
+          },
+          history,
+          message: t,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`);
+      sessionRef.current = data.session_id ?? sessionRef.current;
+      setMsgs((m) => [...m, { from: "ai", t: data.reply || "…" }]);
+    } catch (err: any) {
+      setMsgs((m) => [
+        ...m,
+        {
+          from: "ai",
+          t: `NovaAI is unavailable right now (${err?.message ?? "network error"}). Try again in a moment.`,
+        },
+      ]);
+    } finally {
       setTyping(false);
-      setMsgs((m) => [...m, { from: "ai", t: reply }]);
-    }, 850);
+    }
   };
 
   return (
