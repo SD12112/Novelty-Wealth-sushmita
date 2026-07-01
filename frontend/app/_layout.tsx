@@ -104,9 +104,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 16,
     left: "50%",
-    // @ts-ignore web-only transform
-    transform: Platform.OS === "web" ? "translateX(-50%)" : undefined,
-    marginLeft: Platform.OS === "web" ? 0 : -55,
+    marginLeft: -55,
     width: 110,
     height: 26,
     borderRadius: 13,
