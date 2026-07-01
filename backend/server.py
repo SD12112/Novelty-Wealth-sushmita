@@ -137,6 +137,19 @@ async def nova_chat(payload: NovaChatRequest):
     return NovaChatResponse(session_id=session_id, reply=reply or "")
 
 
+# Serve the code export zip so the user can download the full source.
+from fastapi.responses import FileResponse
+
+
+@api_router.get("/download/source")
+async def download_export():
+    return FileResponse(
+        ROOT_DIR / "downloads" / "novelty-wealth-export.zip",
+        media_type="application/zip",
+        filename="novelty-wealth-export.zip",
+    )
+
+
 app.include_router(api_router)
 
 app.add_middleware(
